@@ -1,0 +1,17 @@
+{
+  "name": "url-shortener-wordpress-sensia",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "start": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  },
+  "dependencies": {
+    "@tsndr/cloudflare-worker-jwt": "^2.5.3",
+    "cookie": "^0.6.0"
+  }
+}

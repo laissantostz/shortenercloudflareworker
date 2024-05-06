@@ -1,0 +1,15 @@
+name = "url-shortener-wordpress-sensia"
+main = "src/index.js"
+compatibility_date = "2024-05-02"
+workers_dev = true
+
+[[kv_namespaces]]
+id = "f67b812215d9441da0105dc16b2e4a9c"
+binding = "BD_ID"
+
+[vars]
+DEFAULT_PAGE = "https://dev.ingage.com.br/sensia"
+JWT_SECRET = "2APNC3tlt9LNpBvy2Nbh5S6xPkDz"
+PASSWORD = "41sY03xTti69xASIQ"
+RECORD_CLICKS = "true"
+USERNAME = "ingage"
