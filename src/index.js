@@ -152,6 +152,7 @@ async function handleShortenRequest(request) {
 		password: params.password,
 		shortUrlLength: length,
 		longUrl: params.longUrl,
+		referrer: request.headers.get('Referer'),
 		clicks: 0,
 		id: params.id || generateUniqueKey(),
 	};
@@ -235,11 +236,11 @@ export async function handleRequest(event) {
 		// Redirect the user to the full URL
 		const pathWithoutSlash = path.substring(1);
 		const key = `url:${pathWithoutSlash}`;
-		console.log(`path is:${key}`);
-		let fullURLObj = await BD_ID.get(pathWithoutSlash);
+		console.log(`path is 1:${key}`);
+		let fullURLObj = await BD_ID.get(key);
 		console.log(fullURLObj);
 		let response;
-		console.log(`path is:${JSON.stringify(fullURLObj)}`);
+		console.log(`path is 2:${JSON.stringify(fullURLObj)}`);
 
 		if (fullURLObj) {
 			fullURLObj = JSON.parse(fullURLObj);
@@ -287,6 +288,7 @@ export async function handleRequest(event) {
 			requirePassword: requirePassword,
 			password: password,
 			shortUrlLength: shortUrlLength,
+			referrer: request.headers.get('Referer'),
 			longUrl: longUrl,
 		};
 		await BD_ID.put(shortUrl, JSON.stringify(data));
@@ -333,6 +335,7 @@ export async function handleRequest(event) {
 						expirationTime: data.expirationTime,
 						requirePassword: data.requirePassword,
 						password: data.password,
+						referrer: request.headers.get('Referer'),
 						clicks: data.clicks,
 					});
 				}
@@ -356,7 +359,7 @@ export async function handleRequest(event) {
 
 addEventListener('fetch', async (event) => {
 	console.log('request do fetch: ');
-	console.log(event.request);
+	console.log(event.request.headers.get('Referer'));
 	console.log('BD_ID: ');
 	console.log(BD_ID);
 	event.respondWith(handleRequest(event));
