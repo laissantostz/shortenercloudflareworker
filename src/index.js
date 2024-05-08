@@ -32,11 +32,20 @@ const statusCode = 302;
 // }
 
 async function addClickRecord(shortUrl, fullURLObj) {
-	if (fullURLObj.clicks === null) {
-		fullURLObj.clicks = 0;
-	} else {
-		fullURLObj.clicks++;
-	}
+	// if (fullURLObj.clicks === null) {
+	// 	fullURLObj.clicks = 0;
+	// } else {
+	// 	fullURLObj.clicks++;
+	// }
+	const referer = fullURLObj.referrer;
+	let refererClicks = fullURLObj.clicks[referer] || 0;
+	refererClicks++;
+	fullURLObj.clicks[referer] = refererClicks;
+
+	console.log('Referrer clicks', refererClicks);
+
+	console.log('Full url init:', fullURLObj);
+
 	await BD_ID.put(`url:${shortUrl}`, JSON.stringify(fullURLObj)); // Schedule click event recording in the background
 
 	const date = new Date();
@@ -153,16 +162,17 @@ async function handleShortenRequest(request) {
 		shortUrlLength: length,
 		longUrl: params.longUrl,
 		referrer: request.headers.get('Referer'),
-		clicks: 0,
+		clicks: {},
 		id: params.id || generateUniqueKey(),
 	};
-	if (data.expirationTime == 0) {
-		await BD_ID.put(key, JSON.stringify(data));
-	} else {
-		await BD_ID.put(key, JSON.stringify(data), {
-			expirationTtl: expirationTime * 60 * 1000,
-		});
-	}
+
+	await BD_ID.put(key, JSON.stringify(data));
+	// if (data.expirationTime == 0) {
+	// } else {
+	// 	await BD_ID.put(key, JSON.stringify(data), {
+	// 		expirationTtl: expirationTime * 60 * 1000,
+	// 	});
+	// }
 	const result = {
 		status: 200,
 		shortUrl: key.split(':')[1],
@@ -215,6 +225,8 @@ export async function handleRequest(event) {
 	console.log('Request do handle:');
 	console.log(event);
 	const request = event.request;
+	console.log('Referrer:');
+	console.log(request.headers.get('Referer'));
 	console.log('URL:');
 	console.log(request.url);
 	const url = new URL(request.url);
@@ -237,7 +249,7 @@ export async function handleRequest(event) {
 		const pathWithoutSlash = path.substring(1);
 		const key = `url:${pathWithoutSlash}`;
 		console.log(`path is 1:${key}`);
-		let fullURLObj = await BD_ID.get(key);
+		let fullURLObj = await BD_ID.get(key, { expirationTtl: 1 });
 		console.log(fullURLObj);
 		let response;
 		console.log(`path is 2:${JSON.stringify(fullURLObj)}`);
@@ -245,10 +257,15 @@ export async function handleRequest(event) {
 		if (fullURLObj) {
 			fullURLObj = JSON.parse(fullURLObj);
 
+			fullURLObj.referrer = request.headers.get('Referer');
+
 			console.log(`fullURLObj.longUrl is:${fullURLObj.longUrl}`);
-			if (RECORD_CLICKS) {
-				event.waitUntil(addClickRecord(pathWithoutSlash, fullURLObj)); // Schedule click event recording in the background
-			}
+
+			event.waitUntil(addClickRecord(pathWithoutSlash, fullURLObj));
+
+			// if (RECORD_CLICKS) {
+			// 	event.waitUntil(addClickRecord(pathWithoutSlash, fullURLObj)); // Schedule click event recording in the background
+			// }
 			response = Response.redirect(fullURLObj.longUrl, 301);
 			return response;
 		} else {
@@ -290,6 +307,7 @@ export async function handleRequest(event) {
 			shortUrlLength: shortUrlLength,
 			referrer: request.headers.get('Referer'),
 			longUrl: longUrl,
+			clicks: {},
 		};
 		await BD_ID.put(shortUrl, JSON.stringify(data));
 
