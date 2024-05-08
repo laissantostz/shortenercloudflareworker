@@ -1,16 +1,23 @@
 import jwt from '@tsndr/cloudflare-worker-jwt';
 import { parse } from 'cookie';
+const invalidPaths = ['shorten', 'api', 'login', 'del', 'edit', 'links', 'admin', 'dashboard', 'settings'];
 
 const statusCode = 302;
 
-// async function handleRequest(request, env) {
-// 	const url = new URL(request.url);
+// async function handleRequest(event) {
+// 	console.log('rEQUEST 1');
+// 	console.log(event);
+// 	const url = new URL(event.request.url);
 // 	const shortened = url.pathname.slice(1);
 // 	let destinationURL = 'https://meusensia.com.br/';
+// 	console.log('Shortened 1');
+// 	console.log(shortened);
 
 // 	if (shortened != '') {
 // 		destinationURL = 'https://meusensia.com.br/imovel/sensia-patamares/?teste=' + shortened;
 // 		const value = await BD_ID.get(shortened);
+// 		console.log('BD_ID 1');
+// 		console.log(value);
 
 // 		if (value != null) {
 // 			destinationURL = value;
@@ -30,7 +37,7 @@ async function addClickRecord(shortUrl, fullURLObj) {
 	} else {
 		fullURLObj.clicks++;
 	}
-	await LINKS.put(`url:${shortUrl}`, JSON.stringify(fullURLObj)); // Schedule click event recording in the background
+	await BD_ID.put(`url:${shortUrl}`, JSON.stringify(fullURLObj)); // Schedule click event recording in the background
 
 	const date = new Date();
 	const currentYear = date.getUTCFullYear();
@@ -43,30 +50,172 @@ async function addClickRecord(shortUrl, fullURLObj) {
 	const monthKey = `${shortUrl}:${monthKeyWithoutShortUrl}`;
 	const yearKey = `${shortUrl}:${currentYear}`;
 
-	const dayValue = await LINKS.get(CLICKS_NAMESPACE + dayKey);
+	const dayValue = await BD_ID.get(CLICKS_NAMESPACE + dayKey);
 	let dayRecords = dayValue === null ? {} : JSON.parse(dayValue);
 	dayRecords[hourKey] = (dayRecords[hourKey] || 0) + 1;
 	console.log(`dayRecords is:${dayRecords}`);
 
-	await LINKS.put(CLICKS_NAMESPACE + dayKey, JSON.stringify(dayRecords), {
+	await BD_ID.put(CLICKS_NAMESPACE + dayKey, JSON.stringify(dayRecords), {
 		expirationTtl: 3 * 24 * 60 * 60,
 	});
 
-	const monthValue = await LINKS.get(CLICKS_NAMESPACE + monthKey);
+	const monthValue = await BD_ID.get(CLICKS_NAMESPACE + monthKey);
 	let monthRecords = monthValue === null ? {} : JSON.parse(monthValue);
 	monthRecords[dayKeyWithoutShortUrl] = (monthRecords[dayKeyWithoutShortUrl] || 0) + 1;
 	console.log(`monthRecords is:${monthRecords}`);
 
-	await LINKS.put(CLICKS_NAMESPACE + monthKey, JSON.stringify(monthRecords), {});
+	await BD_ID.put(CLICKS_NAMESPACE + monthKey, JSON.stringify(monthRecords), {});
 
-	const yearValue = await LINKS.get(CLICKS_NAMESPACE + yearKey);
+	const yearValue = await BD_ID.get(CLICKS_NAMESPACE + yearKey);
 	let yearRecords = yearValue === null ? {} : JSON.parse(yearValue);
 	yearRecords[monthKeyWithoutShortUrl] = (yearRecords[monthKeyWithoutShortUrl] || 0) + 1;
-	await LINKS.put(CLICKS_NAMESPACE + yearKey, JSON.stringify(yearRecords), {});
+	await BD_ID.put(CLICKS_NAMESPACE + yearKey, JSON.stringify(yearRecords), {});
+}
+
+function generateRandomKey(length) {
+	const characters = '23456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ'; // exclude similar looking characters, include uppercase letters
+	let result = '';
+	for (let i = 0; i < length; i++) {
+		result += characters.charAt(Math.floor(Math.random() * characters.length));
+	}
+	return result;
+}
+
+function generateUniqueKey() {
+	const timestamp = Date.now();
+	const randomString = Math.random().toString(36).substring(2, 12);
+	return `${timestamp}${randomString}`;
+}
+
+function formatExpirationTime(expirationTime) {
+	const now = new Date();
+	const expirationDate = new Date(now.getTime() + expirationTime * 60 * 1000);
+	return expirationDate.getTime();
+}
+
+async function handleShortenRequest(request) {
+	// Get the parameters from the request
+	const params = await request.json();
+	// const token = params.jwt;
+	// console.log(`token is:${token}`);
+	// const isValid = await jwt.verify(token, JWT_SECRET);
+	// if (!isValid) {
+	// 	return new Response('Invalid credentials! Need Login', { status: 401 });
+	// }
+	const length = params.shortUrlLength;
+	let response;
+
+	let key;
+	const url = params.shortUrl;
+
+	if (url === null || url === '') {
+		console.log('url is empty');
+		key = generateRandomKey(length);
+		let value = await BD_ID.get(key);
+		while (value !== null) {
+			key = generateRandomKey(length);
+			value = await BD_ID.get(key);
+		}
+		key = `url:${key}`;
+	} else {
+		console.log('url is not empty');
+
+		// Check if the path is already in use
+		if (invalidPaths.includes(url)) {
+			response = new Response('Invalid path because of conflict!', {
+				status: 400,
+			});
+			return response;
+		}
+		key = `url:${url}`;
+		const value = await BD_ID.get(key);
+		if (value !== null && JSON.parse(value).longUrl !== params.longUrl) {
+			const response = new Response('The shortUrl has been used!', {
+				status: 400,
+			});
+			return response;
+		}
+		const oldShortUrl = params.oldShortUrl;
+		const oldUrlKey = `url:${oldShortUrl}`;
+		const oldUrlValue = await BD_ID.get(oldUrlKey);
+		if (url !== oldShortUrl && oldUrlValue !== null) {
+			await BD_ID.delete(oldUrlKey);
+		}
+	}
+
+	const expirationTime = params.expirationTime;
+
+	// Store the parameters in KV
+	const data = {
+		expirationTime: expirationTime == 0 ? 0 : formatExpirationTime(expirationTime),
+		requirePassword: params.requirePassword,
+		password: params.password,
+		shortUrlLength: length,
+		longUrl: params.longUrl,
+		clicks: 0,
+		id: params.id || generateUniqueKey(),
+	};
+	if (data.expirationTime == 0) {
+		await BD_ID.put(key, JSON.stringify(data));
+	} else {
+		await BD_ID.put(key, JSON.stringify(data), {
+			expirationTtl: expirationTime * 60 * 1000,
+		});
+	}
+	const result = {
+		status: 200,
+		shortUrl: key.split(':')[1],
+		...data,
+	};
+	response = new Response(JSON.stringify(result), { status: 200 });
+	return response;
+}
+
+const CLICKS_NAMESPACE = 'clicks:';
+
+async function handleClickHistoryRequest(request) {
+	// const params = await request.json();
+	// const token = params.jwt;
+	// const isValid = await jwt.verify(token, JWT_SECRET);
+	// if (!isValid) {
+	// 	return new Response('Invalid credentials! Need Login', { status: 401 });
+	// }
+	const { shortUrl, timeRange } = params;
+	const records = await getClickRecord(shortUrl, timeRange);
+	return new Response(JSON.stringify({ data: records }), {
+		headers: { 'Content-Type': 'application/json' },
+	});
+}
+
+async function getClickRecord(shortUrl, timeRange) {
+	const date = new Date();
+	let key;
+
+	switch (timeRange) {
+		case 'day':
+			key = `${shortUrl}:${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
+			break;
+		case 'month':
+			key = `${shortUrl}:${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`;
+			break;
+		case 'year':
+			key = `${shortUrl}:${date.getUTCFullYear()}`;
+			break;
+		default:
+			throw new Error('Invalid time range');
+	}
+	console.log(`range key is: "${CLICKS_NAMESPACE + key}"`);
+	const value = await BD_ID.get(CLICKS_NAMESPACE + key);
+	console.log(`click record is: ${value}`);
+	return value === null ? {} : JSON.parse(value);
 }
 
 export async function handleRequest(event) {
+	console.log('Request do handle:');
+	console.log(event);
 	const request = event.request;
+	console.log('URL:');
+	console.log(request.url);
 	const url = new URL(request.url);
 	const path = url.pathname;
 	if (path === '/api/shorten') {
@@ -87,7 +236,8 @@ export async function handleRequest(event) {
 		const pathWithoutSlash = path.substring(1);
 		const key = `url:${pathWithoutSlash}`;
 		console.log(`path is:${key}`);
-		let fullURLObj = await LINKS.get(key);
+		let fullURLObj = await BD_ID.get(pathWithoutSlash);
+		console.log(fullURLObj);
 		let response;
 		console.log(`path is:${JSON.stringify(fullURLObj)}`);
 
@@ -123,7 +273,7 @@ export async function handleRequest(event) {
 			});
 			return response;
 		}
-		const value = await LINKS.get(shortUrl);
+		const value = await BD_ID.get(shortUrl);
 		if (value !== null) {
 			response = new Response(`Short URL ${shortUrl} already exists!`, {
 				status: 400,
@@ -139,7 +289,7 @@ export async function handleRequest(event) {
 			shortUrlLength: shortUrlLength,
 			longUrl: longUrl,
 		};
-		await LINKS.put(shortUrl, JSON.stringify(data));
+		await BD_ID.put(shortUrl, JSON.stringify(data));
 
 		response = new Response(shortUrl, { status: 200 });
 		return response;
@@ -154,7 +304,7 @@ export async function handleRequest(event) {
 			return new Response('Invalid credentials! Need Login', { status: 401 });
 		}
 
-		await LINKS.delete(`url:${shortUrl}`);
+		await BD_ID.delete(`url:${shortUrl}`);
 		const response = new Response(JSON.stringify({ shortUrl: shortUrl, status: 200 }), {
 			status: 200,
 		});
@@ -162,19 +312,19 @@ export async function handleRequest(event) {
 	}
 
 	async function handleListRequest(request) {
-		const params = await request.json();
-		const token = params.jwt;
-		const isValid = await jwt.verify(token, JWT_SECRET);
-		if (!isValid) {
-			return new Response('Invalid credentials! Need Login', { status: 401 });
-		}
+		// const params = await request.json();
+		// const token = params.jwt;
+		// const isValid = await jwt.verify(token, JWT_SECRET);
+		// if (!isValid) {
+		// 	return new Response('Invalid credentials! Need Login', { status: 401 });
+		// }
 
-		const keys = await LINKS.list();
+		const keys = await BD_ID.list();
 		const shortUrls = [];
 
 		for (const key of keys.keys) {
 			if (key.name.startsWith('url:')) {
-				const value = await LINKS.get(key.name);
+				const value = await BD_ID.get(key.name);
 				if (value) {
 					const data = JSON.parse(value);
 					shortUrls.push({
@@ -198,6 +348,16 @@ export async function handleRequest(event) {
 	}
 }
 
+// addEventListener('fetch', async (event) => {
+// 	console.log('request do fetch: ');
+// 	console.log(event.request);
+// 	event.respondWith(handleRequest(event.request, event));
+// });
+
 addEventListener('fetch', async (event) => {
-	event.respondWith(handleRequest(event.request, event));
+	console.log('request do fetch: ');
+	console.log(event.request);
+	console.log('BD_ID: ');
+	console.log(BD_ID);
+	event.respondWith(handleRequest(event));
 });
