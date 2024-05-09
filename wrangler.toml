@@ -11,5 +11,5 @@ binding = "BD_ID"
 DEFAULT_PAGE = "https://dev.ingage.com.br/sensia"
 JWT_SECRET = "2APNC3tlt9LNpBvy2Nbh5S6xPkDz"
 PASSWORD = "41sY03xTti69xASIQ"
-RECORD_CLICKS = "true"
 USERNAME = "ingage"
+RECORD_CLICKS = true
