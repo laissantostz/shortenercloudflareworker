@@ -1,5 +1,4 @@
 import { invalidPaths } from './constants';
-import { formatExpirationTime } from './utils/format-expiration-time';
 import { generateUniqueKey } from './utils/generate-unique-key';
 import { generateRandomKey } from './utils/generate-random-key';
 
@@ -7,6 +6,8 @@ export async function handleShortenRequest(request) {
 	const params = await request.json();
 	const length = params.shortUrlLength;
 	const url = params.shortUrl;
+	const activationDate = params.activation;
+	const expirationDate = params.expiration;
 
 	let key;
 
@@ -43,10 +44,9 @@ export async function handleShortenRequest(request) {
 		}
 	}
 
-	const expirationTime = params.expirationTime;
-
 	const data = {
-		expirationTime: expirationTime == 0 ? 0 : formatExpirationTime(expirationTime),
+		activationDate: activationDate ? new Date(activationDate).toISOString() : new Date().toISOString(),
+		expirationDate: expirationDate ? new Date(expirationDate).toISOString() : null,
 		requirePassword: params.requirePassword,
 		password: params.password,
 		shortUrlLength: length,
@@ -56,13 +56,7 @@ export async function handleShortenRequest(request) {
 		id: params.id || generateUniqueKey(),
 	};
 
-	if(data.expirationTime == 0) {
-    await BD_ID.put(key, JSON.stringify(data));
-	} else {
-		await BD_ID.put(key, JSON.stringify(data), {
-			expirationTtl: (expirationTime || 1) * 60 * 1000,
-		});
-	}
+	await BD_ID.put(key, JSON.stringify(data));
 
 	const result = {
 		status: 200,
