@@ -33,12 +33,17 @@ export async function handleRequest(event) {
   const key = `url:${pathWithoutSlash}`;
 
   let fullURLObj = await BD_ID.get(key);
-
+  
   if(!fullURLObj) {
-    return new Response('Página não Encotrada', { status: 404 });
+    return new Response('Página não encontrada', { status: 404 });
   }
-
+  
   fullURLObj = JSON.parse(fullURLObj);
+
+  const redirectTarget = fullURLObj.longUrl;
+  if(!redirectTarget) {
+    return new Response('Página não encontrada', { status: 404 });
+  }
 
   fullURLObj.referrer = request.headers.get('Referer');
 
@@ -46,5 +51,18 @@ export async function handleRequest(event) {
     await addClickRecord(pathWithoutSlash, fullURLObj); // Schedule click event recording in the background
   }
 
-  return Response.redirect(fullURLObj.longUrl, 301);
+  const activationDate = fullURLObj.activationDate;
+  const expirationDate = fullURLObj.expirationDate;
+
+  // Data atual menor que a data de ativação = Responde com 404
+  if((activationDate && new Date() < new Date(activationDate))) {
+    return new Response('Página não encontrada', { status: 404 });
+  }
+
+  // Data atual menor ou igual a data de expiração ou sem data de expiração = Redireciona para o destino
+  if((expirationDate && new Date() <= new Date(expirationDate)) || !expirationDate) {
+    return Response.redirect(redirectTarget, 301);
+  }
+
+  return new Response('Página não encontrada', { status: 404 });
 }
