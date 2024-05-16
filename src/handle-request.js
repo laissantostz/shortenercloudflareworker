@@ -4,65 +4,47 @@ import { handleListRequest } from './handle-list-request';
 import { handleShortenRequest } from './handle-shorten-request';
 import { handleClickHistoryRequest } from './handle-click-history-request';
 import { addClickRecord } from './utils/add-click-record';
-import { handleFindUniqueRequest } from "./handle-find-unique-request";
+import { handleFindUniqueRequest } from './handle-find-unique-request';
 
 export async function handleRequest(event) {
 	const request = event.request;
 	const url = new URL(request.url);
 	const path = url.pathname;
 
-  if(path === '/') {
-    return Response.redirect(DEFAULT_PAGE, 301)
-  }
+	if (path === '/') {
+		return Response.redirect(DEFAULT_PAGE, 301);
+	}
 
-  const controller = {
-    '/api/shorten': handleShortenRequest,
-    '/api/del': handleDeleteRequest,
-    '/api/list': handleListRequest,
-    '/api/edit': handleEditRequest,
-    '/api/history': handleClickHistoryRequest,
-    '/api/findUnique': handleFindUniqueRequest
-  };
+	const controller = {
+		'/api/shorten': handleShortenRequest,
+		'/api/del': handleDeleteRequest,
+		'/api/list': handleListRequest,
+		'/api/edit': handleEditRequest,
+		'/api/history': handleClickHistoryRequest,
+		'/api/findUnique': handleFindUniqueRequest,
+	};
 
-  if(controller[path]) {
-    return controller[path](request);
-  }
-  
-  // Redirect the user to the full URL
-  const pathWithoutSlash = path.substring(1);
-  const key = `url:${pathWithoutSlash}`;
+	if (controller[path]) {
+		return controller[path](request);
+	}
 
-  let fullURLObj = await BD_ID.get(key);
-  
-  if(!fullURLObj) {
-    return new Response('Página não encontrada', { status: 404 });
-  }
-  
-  fullURLObj = JSON.parse(fullURLObj);
+	// Redirect the user to the full URL
+	const pathWithoutSlash = path.substring(1);
+	const key = `url:${pathWithoutSlash}`;
 
-  const redirectTarget = fullURLObj.longUrl;
-  if(!redirectTarget) {
-    return new Response('Página não encontrada', { status: 404 });
-  }
+	let fullURLObj = await BD_ID.get(key);
 
-  fullURLObj.referrer = request.headers.get('Referer');
+	if (!fullURLObj) {
+		return new Response('Página não Encotrada', { status: 404 });
+	}
 
-  if(RECORD_CLICKS) {
-    await addClickRecord(pathWithoutSlash, fullURLObj); // Schedule click event recording in the background
-  }
+	fullURLObj = JSON.parse(fullURLObj);
 
-  const activationDate = fullURLObj.activationDate;
-  const expirationDate = fullURLObj.expirationDate;
+	fullURLObj.referrer = request.headers.get('Referer');
 
-  // Data atual menor que a data de ativação = Responde com 404
-  if((activationDate && new Date() < new Date(activationDate))) {
-    return new Response('Página não encontrada', { status: 404 });
-  }
+	if (RECORD_CLICKS) {
+		await addClickRecord(pathWithoutSlash, fullURLObj); // Schedule click event recording in the background
+	}
 
-  // Data atual menor ou igual a data de expiração ou sem data de expiração = Redireciona para o destino
-  if((expirationDate && new Date() <= new Date(expirationDate)) || !expirationDate) {
-    return Response.redirect(redirectTarget, 301);
-  }
-
-  return new Response('Página não encontrada', { status: 404 });
+	return Response.redirect(fullURLObj.longUrl, 301);
 }
