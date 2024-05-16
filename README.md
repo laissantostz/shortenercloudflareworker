@@ -26,11 +26,11 @@ Após a criação do Worker, acesse as configurações do mesmo, clique em Varia
 
 Crie a variável BD_ID e associe ao seu KV criado para que seu Worker possa se comunicar com o KV.
 
-[Exemplo 2](https://dev.ingage.com.br/sensia/wp-content/uploads/2024/05/Screenshot_2.jpg)
+![Exemplo 2](https://dev.ingage.com.br/sensia/wp-content/uploads/2024/05/Screenshot_2.jpg)
 
 Em triggers, no menu lateral esquerdo, adicione seu custom domain a ser utilizado nas URLs encurtadas:
 
-[Exemplo 3](https://dev.ingage.com.br/sensia/wp-content/uploads/2024/05/Screenshot_3.jpg)
+![Exemplo 3](https://dev.ingage.com.br/sensia/wp-content/uploads/2024/05/Screenshot_3.jpg)
 
 Use o wrangler para acessar a raiz seu worker localmente e clone este repositório para obter o código-fonte inicial:
 
