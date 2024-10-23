@@ -35,7 +35,7 @@ export async function handleRequest(event) {
 	let fullURLObj = await BD_ID.get(key);
 
 	if (!fullURLObj) {
-		return new Response('Página não Encotrada', { status: 404 });
+		return new Response('Página não Encontrada', { status: 404 });
 	}
 
 	fullURLObj = JSON.parse(fullURLObj);
