@@ -1,50 +1,161 @@
-import { handleDeleteRequest } from './handle-delete-request';
-import { handleEditRequest } from './handle-edit-request';
-import { handleListRequest } from './handle-list-request';
-import { handleShortenRequest } from './handle-shorten-request';
-import { handleClickHistoryRequest } from './handle-click-history-request';
-import { addClickRecord } from './utils/add-click-record';
-import { handleFindUniqueRequest } from './handle-find-unique-request';
 
-export async function handleRequest(event) {
-	const request = event.request;
-	const url = new URL(request.url);
-	const path = url.pathname;
+import { addClickRecord } from './utils/add-click-record'; 
+import { getClickRecord } from './utils/get-click-record';
 
-	if (path === '/') {
-		return Response.redirect(DEFAULT_PAGE, 301);
+
+addEventListener('fetch', (event) => {
+	event.respondWith(handleRequest(event.request));
+});
+
+
+export async function handleRequest(request) {
+    const url = new URL(request.url);
+    const pathname = url.pathname.substring(1); // Remove a barra inicial para obter o caminho
+
+    console.log('Rota solicitada:', pathname);
+
+    if (pathname === 'api/shorten') {
+        return handleShortenRequest(request);
+    } else if (pathname === 'api/findUnique') {
+        return handleFindUniqueRequest(request);
+    } else if (pathname === 'api/click-history') {
+        return handleClickHistoryRequest(request);
+    } else {
+        // Passando o request para handleShortUrlRedirect
+        return handleShortUrlRedirect(pathname, request);
+    }
+}
+
+
+
+
+
+
+// Função para manipular a rota /api/shorten
+async function handleShortenRequest(request) {
+	try {
+		const params = await request.json();
+		console.log('Dados recebidos para shorten (params):', JSON.stringify(params));
+
+		const { shortUrl, longUrl, expirationTime, requirePassword, password, shortUrlLength } = params;
+
+		if (!shortUrl || !longUrl) {
+			return new Response('Invalid request data', { status: 400 });
+		}
+
+		const existingData = await BD_ID.get(shortUrl);
+		console.log(`Valor existente para shortUrl: ${shortUrl} -> ${existingData}`);
+
+		if (existingData !== null) {
+			console.log(`Atualizando dados para shortUrl: ${shortUrl}`);
+			const updatedData = {
+				...JSON.parse(existingData),
+				longUrl,
+				expirationTime,
+				requirePassword,
+				password,
+				shortUrlLength,
+			};
+
+			await BD_ID.put(shortUrl, JSON.stringify(updatedData));
+			console.log(`Short URL ${shortUrl} atualizado com sucesso!`);
+		} else {
+			console.log(`Criando novo registro para shortUrl: ${shortUrl}`);
+			const newData = {
+				expirationTime,
+				requirePassword,
+				password,
+				shortUrlLength,
+				longUrl,
+				clicks: {},
+			};
+
+			await BD_ID.put(shortUrl, JSON.stringify(newData));
+			console.log(`Short URL ${shortUrl} criada com sucesso!`);
+		}
+
+		return new Response(JSON.stringify({ shortUrl }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+	} catch (error) {
+		console.error('Erro durante o processamento da solicitação /api/shorten:', error);
+		return new Response('Erro interno do servidor', { status: 500 });
 	}
+}
 
-	const controller = {
-		'/api/shorten': handleShortenRequest,
-		'/api/del': handleDeleteRequest,
-		'/api/list': handleListRequest,
-		'/api/edit': handleEditRequest,
-		'/api/history': handleClickHistoryRequest,
-		'/api/findUnique': handleFindUniqueRequest,
-	};
+// Função para manipular a rota /api/findUnique
+async function handleFindUniqueRequest(request) {
+	try {
+		const params = await request.json();
+		console.log('Dados recebidos para findUnique (params):', JSON.stringify(params));
 
-	if (controller[path]) {
-		return controller[path](request);
+		const { registerKey } = params;
+
+		if (!registerKey) {
+			return new Response('Invalid request data', { status: 500 });
+		}
+
+		const existingData = await BD_ID.get(registerKey);
+		console.log(`Valor existente para registerKey: ${registerKey} -> ${existingData}`);
+
+		if (existingData !== null) {
+			return new Response(existingData, { status: 200, headers: { 'Content-Type': 'application/json' } });
+		} else {
+			return new Response('URL curta não encontrada no armazenamento', { status: 404 });
+		}
+	} catch (error) {
+		console.error('Erro durante o processamento da solicitação /api/findUnique:', error);
+		return new Response('Erro interno do servidor', { status: 500 });
 	}
+}
 
-	// Redirect the user to the full URL
-	const pathWithoutSlash = path.substring(1);
-	const key = `url:${pathWithoutSlash}`;
 
-	let fullURLObj = await BD_ID.get(key);
+async function handleShortUrlRedirect(shortUrl, request) {
+    console.log('Processando redirecionamento para shortUrl:', shortUrl);
 
-	if (!fullURLObj) {
-		return new Response('Página não Encontrada', { status: 404 });
-	}
+    try {
+        const storedData = await BD_ID.get(shortUrl);
+        console.log(`Valor existente para shortUrl: ${shortUrl} -> ${storedData}`);
 
-	fullURLObj = JSON.parse(fullURLObj);
+        if (storedData !== null) {
+            const data = JSON.parse(storedData);
+            const destinationUrl = data.longUrl;
 
-	fullURLObj.referrer = request.headers.get('Referer');
+            if (destinationUrl) {
+                // Registrar o clique
+                await addClickRecord(shortUrl, request, data); // Passando o request aqui
 
-	if (RECORD_CLICKS) {
-		await addClickRecord(pathWithoutSlash, fullURLObj); // Schedule click event recording in the background
-	}
+                console.log(`Redirecionando para: ${destinationUrl}`);
+                return Response.redirect(destinationUrl, 302);
+            } else {
+                return new Response('URL de destino não encontrada no armazenamento', { status: 404 });
+            }
+        } else {
+            return new Response('URL curta não encontrada no armazenamento', { status: 404 });
+        }
+    } catch (error) {
+        console.error('Erro ao processar redirecionamento de URL curta:', error);
+        return new Response('Erro interno do servidor', { status: 500 });
+    }
+}
 
-	return Response.redirect(fullURLObj.longUrl, 301);
+
+
+async function handleClickHistoryRequest(request) {
+    try {
+        const params = await request.json();
+        const { shortUrl } = params;
+
+        if (!shortUrl) {
+            return new Response('Missing shortUrl or timeRange', { status: 400 });
+        }
+
+        // Use a função getClickRecord para buscar os dados
+        const records = await getClickRecord(shortUrl);
+
+        return new Response(JSON.stringify({ data: records }), {
+            headers: { 'Content-Type': 'application/json' },
+        });
+    } catch (error) {
+        console.error('Erro ao processar histórico de cliques:', error);
+        return new Response('Erro interno do servidor', { status: 500 });
+    }
 }

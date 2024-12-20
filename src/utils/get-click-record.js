@@ -1,24 +1,13 @@
 import { CLICKS_NAMESPACE } from '../constants';
 
-export async function getClickRecord(shortUrl, timeRange) {
-	const date = new Date();
-	let key;
+export async function getClickRecord(shortUrl) {
+    const prefix = `${CLICKS_NAMESPACE}${shortUrl}`;
 
-	switch(timeRange) {
-		case 'day':
-			key = `${shortUrl}:${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
-			break;
-		case 'month':
-			key = `${shortUrl}:${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`;
-			break;
-		case 'year':
-			key = `${shortUrl}:${date.getUTCFullYear()}`;
-			break;
-		default:
-			throw new Error('Invalid time range');
-	}
+    // console.log(`Chaves encontradas com o prefixo ${prefix}:`, allKeys.keys);
 
-	const value = await BD_ID.get(CLICKS_NAMESPACE + key);
+    const value = await BD_ID.get(prefix);
 
-	return value === null ? {} : JSON.parse(value);
+    
+
+    return value;
 }

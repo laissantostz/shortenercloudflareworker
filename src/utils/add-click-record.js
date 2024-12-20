@@ -1,48 +1,46 @@
 import { CLICKS_NAMESPACE } from '../constants';
 
-export async function addClickRecord(shortUrl, fullURLObj) {
-	const referer = fullURLObj.referrer;
 
-	console.log('fullObj:', fullURLObj)
-	console.log('referrer:', referer)
+export async function addClickRecord(shortUrl, request, fullURLObj) {
+    let referer = request.headers.get('referer') || 'direct';
+    if (!referer || referer === 'undefined') {
+        referer = 'direct';
+    }
 
-	let refererClicks = fullURLObj.clicks[referer] || 0;
-	
-	refererClicks++;
-	fullURLObj.clicks[referer] = refererClicks;
+    console.log('Referer identificado:', referer);
 
-	await BD_ID.put(`url:${shortUrl}`, JSON.stringify(fullURLObj)); // Schedule click event recording in the background
+    const key = `${CLICKS_NAMESPACE}${shortUrl}`;
 
-	const date = new Date();
-	const currentYear = date.getUTCFullYear();
-	const currentMonth = date.getUTCMonth() + 1;
-	const currentDate = date.getUTCDate();
-	
-	const hourKey = `${currentYear}-${currentMonth}-${currentDate}-${date.getUTCHours()}`;
-	const dayKeyWithoutShortUrl = `${currentYear}-${currentMonth}-${currentDate}`;
-	const dayKey = `${shortUrl}:${dayKeyWithoutShortUrl}`;
-	const monthKeyWithoutShortUrl = `${currentYear}-${currentMonth}`;
-	const monthKey = `${shortUrl}:${monthKeyWithoutShortUrl}`;
-	const yearKey = `${shortUrl}:${currentYear}`;
 
-	const dayValue = await BD_ID.get(CLICKS_NAMESPACE + dayKey);
-	let dayRecords = dayValue === null ? {} : JSON.parse(dayValue);
-	dayRecords[hourKey] = (dayRecords[hourKey] || 0) + 1;
-	console.log(`dayRecords is:${dayRecords}`);
 
-	await BD_ID.put(CLICKS_NAMESPACE + dayKey, JSON.stringify(dayRecords), {
-		expirationTtl: 3 * 24 * 60 * 60,
-	});
 
-	const monthValue = await BD_ID.get(CLICKS_NAMESPACE + monthKey);
-	let monthRecords = monthValue === null ? {} : JSON.parse(monthValue);
-	monthRecords[dayKeyWithoutShortUrl] = (monthRecords[dayKeyWithoutShortUrl] || 0) + 1;
-	console.log(`monthRecords is:${monthRecords}`);
-
-	await BD_ID.put(CLICKS_NAMESPACE + monthKey, JSON.stringify(monthRecords), {});
-
-	const yearValue = await BD_ID.get(CLICKS_NAMESPACE + yearKey);
-	let yearRecords = yearValue === null ? {} : JSON.parse(yearValue);
-	yearRecords[monthKeyWithoutShortUrl] = (yearRecords[monthKeyWithoutShortUrl] || 0) + 1;
-	await BD_ID.put(CLICKS_NAMESPACE + yearKey, JSON.stringify(yearRecords), {});
+    // Incrementar cliques por hora, dia, mês e ano
+    await incrementClick(key, referer);
+   
 }
+
+
+async function incrementClick(key, referer) {
+    try {
+        console.log(`Buscando dados existentes no KV para a chave: ${key}`);
+        const value = await BD_ID.get(key);
+        let record = value ? JSON.parse(value) : {};
+
+        record[referer] = (record[referer] || 0) + 1;
+
+        console.log(`Dados atualizados para a chave ${key}:`, record);
+
+        // Salva novamente no KV
+        await BD_ID.put(key, JSON.stringify(record));
+        console.log(`Dados salvos com sucesso no KV para a chave ${key}`);
+    } catch (error) {
+        console.error(`Erro ao incrementar cliques na chave ${key}:`, error);
+    }
+}
+
+
+
+
+
+
+
